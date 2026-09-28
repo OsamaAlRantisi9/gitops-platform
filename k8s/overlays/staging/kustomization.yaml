@@ -6,7 +6,7 @@ resources:
 # CI rewrites this tag on every merge to main (image promotion into staging).
 images:
   - name: ghcr.io/osamaalrantisi9/hello-api
-    newTag: sha-19e030c
+    newTag: sha-8c31921
 patches:
   - target:
       kind: Ingress
