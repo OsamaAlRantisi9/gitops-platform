@@ -1,0 +1,49 @@
+name: Promote to production
+
+# Manual on purpose: a person decides when the build running in staging goes to production.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  open-pull-request:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the promotion branch
+      pull-requests: write # open the pull request
+    steps:
+      - uses: actions/checkout@v4
+
+      # Promote exactly what staging runs; never build a new image for production.
+      - name: Read the tags in staging and production
+        id: tags
+        run: |
+          staging=$(grep -oP 'newTag: \K\S+' k8s/overlays/staging/kustomization.yaml)
+          production=$(grep -oP 'newTag: \K\S+' k8s/overlays/production/kustomization.yaml)
+          echo "staging=$staging" >> "$GITHUB_OUTPUT"
+          echo "production=$production" >> "$GITHUB_OUTPUT"
+          echo "staging runs $staging, production runs $production"
+
+      - name: Nothing to promote
+        if: steps.tags.outputs.staging == steps.tags.outputs.production
+        run: echo "Production already runs ${{ steps.tags.outputs.staging }}."
+
+      - name: Open a pull request that promotes the staging tag
+        if: steps.tags.outputs.staging != steps.tags.outputs.production
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tags.outputs.staging }}
+          FROM: ${{ steps.tags.outputs.production }}
+        run: |
+          branch="promote/production-${TAG}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          sed -i "s/newTag: .*/newTag: ${TAG}/" k8s/overlays/production/kustomization.yaml
+          git commit -am "deploy: production -> ${TAG}"
+          git push -u origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "Promote ${TAG} to production" \
+            --body "Promotes the image already running in staging (\`${TAG}\`) to production, replacing \`${FROM}\`. Merging this pull request is the approval; the GitOps controller applies it after merge."

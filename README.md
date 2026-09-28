@@ -23,12 +23,12 @@ flowchart LR
     end
 
     P --> G[Commit new tag to<br/>k8s/overlays/staging]
-    G --> A[Argo CD syncs the cluster]
-    A --> ST[staging]
-    ST -. promote by PR .-> PR[production]
+    G --> PW[Promote workflow<br/>opens a PR for production]
+    G -.-> A[Argo CD syncs the cluster<br/>next step, not built yet]
+    PW -.-> A
 ```
 
-CI never talks to the cluster. It only **commits the new image tag to Git**. The GitOps controller pulls that change and reconciles the cluster, so Git is the single source of truth and every deploy is a reviewable, revertible commit.
+CI never talks to the cluster. It only **commits the new image tag to Git**. In the finished design, a GitOps controller (Argo CD, the next step in this repo) pulls that change and reconciles the cluster, so Git is the single source of truth and every deploy is a reviewable, revertible commit. Today the pipeline stops at Git: the tags in `k8s/overlays/*` are always correct and deployable, but nothing is syncing them to a cluster yet.
 
 ---
 
@@ -39,7 +39,8 @@ app/                      Node.js API + Dockerfile + tests
 k8s/base/                 Deployment, Service, Ingress, HPA, PodDisruptionBudget
 k8s/overlays/staging/     1–2 replicas, staging host, image tag written by CI
 k8s/overlays/production/  3–6 replicas, production host, tag changed only by PR
-.github/workflows/ci.yml  test → scan → build → push → promote to staging
+.github/workflows/ci.yml       test → scan → build → push → promote to staging
+.github/workflows/promote.yml  manual: opens a PR that promotes the staging tag to production
 ```
 
 ---
@@ -57,7 +58,7 @@ k8s/overlays/production/  3–6 replicas, production host, tag changed only by P
 - **Runs as UID 1000, not root.** The UID is numeric so Kubernetes' `runAsNonRoot` can verify it.
 - **npm, npx, yarn and corepack are removed** from the runtime image. They aren't needed at runtime, and removing them also removes their dependencies from the attack surface and from scan results.
 - **`CMD ["node", ...]`, not `npm start`**, so `SIGTERM` reaches the app's handler directly.
-- **Immutable tags** (`sha-<commit>`): every image maps to exactly one commit, and nothing is ever deployed as `latest`.
+- **Immutable tags** (`sha-<commit>`): every image maps to exactly one commit, and nothing is ever deployed as `latest`. Both overlays pin a SHA tag, and the base uses a tag that doesn't exist on purpose, so applying the base on its own fails loudly instead of silently running `latest`.
 
 ### Kubernetes
 - **`maxUnavailable: 0`, `maxSurge: 1`**: a rollout adds a new pod, waits for it to be ready, and only then removes an old one, so capacity never drops.
@@ -70,6 +71,7 @@ k8s/overlays/production/  3–6 replicas, production host, tag changed only by P
 - **Least-privilege token**: `contents: read` by default; only the build job gets `packages: write`, and only the promotion job gets `contents: write`.
 - **Scan before push**: the image is built and loaded locally, scanned with Trivy (fails on fixable HIGH/CRITICAL), and only then pushed. Pull requests build and scan but never push.
 - **Supply chain**: gitleaks scans the full Git history for committed secrets, and an SPDX SBOM is generated for every image and kept as a build artifact.
+- **Promote, don't rebuild**: production never gets a fresh build. The manual "Promote to production" workflow reads the tag already running in staging and opens a pull request that sets production to that exact tag. Merging the PR is the approval, and it leaves an audit trail of who promoted what and when.
 
 ---
 
@@ -95,10 +97,10 @@ kubectl kustomize k8s/overlays/production
 
 ## Status and roadmap
 
-**Done:** app with probes, graceful shutdown, logs and metrics · hardened multi-stage image · Kustomize base and two overlays · CI with tests, secret scan, vulnerability scan, SBOM, push to GHCR and automatic promotion to staging.
+**Done:** app with probes, graceful shutdown, logs and metrics · hardened multi-stage image · Kustomize base and two overlays, both pinned to SHA tags · CI with tests, secret scan, vulnerability scan, SBOM, push to GHCR and automatic promotion to staging · manual promote-to-production workflow that opens a pull request.
 
 **Next:**
 - [ ] Local cluster with kind + ingress-nginx + metrics-server, and Argo CD applications for staging and production
-- [ ] "Promote to production" workflow that opens a pull request with the tag already verified in staging
+- [ ] Serve `/metrics` on a separate port that the Ingress doesn't expose
 - [ ] Terraform for Google Cloud: Artifact Registry, GKE Autopilot, Workload Identity Federation for GitHub Actions (no service-account keys), least-privilege IAM, Secret Manager and a budget alert
 - [ ] Runbooks (failed rollout, CrashLoopBackOff) and a backup/restore drill

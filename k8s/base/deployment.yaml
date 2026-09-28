@@ -4,7 +4,7 @@ metadata:
   name: hello-api
 spec:
   # No "replicas" here on purpose: the HorizontalPodAutoscaler owns the replica count.
-  # If Git also set it, Argo CD and the HPA would keep overwriting each other.
+  # If Git also set it, a GitOps controller (e.g. Argo CD) and the HPA would keep overwriting each other.
   revisionHistoryLimit: 5
   selector:
     matchLabels:
@@ -26,8 +26,10 @@ spec:
           type: RuntimeDefault
       containers:
         - name: hello-api
-          # Placeholder; each overlay pins the real tag with Kustomize "images".
-          image: ghcr.io/osamaalrantisi9/hello-api:latest
+          # Each overlay pins an immutable SHA tag with Kustomize "images". This placeholder tag
+          # doesn't exist on purpose: applying the base directly fails loudly instead of
+          # silently running whatever "latest" happens to be.
+          image: ghcr.io/osamaalrantisi9/hello-api:set-by-overlay
           ports:
             - name: http
               containerPort: 8080

@@ -103,7 +103,7 @@ jobs:
           cache-from: type=gha
 
   # GitOps: CI never touches the cluster. It only commits the new tag to Git;
-  # the GitOps controller (Argo CD) sees the change and syncs the cluster.
+  # a GitOps controller (Argo CD, the next step in this repo) syncs the cluster from there.
   promote-to-staging:
     if: github.event_name == 'push'
     needs: build
