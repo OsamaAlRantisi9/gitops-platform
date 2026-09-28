@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: production
+resources:
+  - ../../base
+# Changed only by the "Promote to production" workflow, which opens a pull request
+# with the exact tag already running in staging. Merging that PR is the approval.
+images:
+  - name: ghcr.io/osamaalrantisi9/hello-api
+    newTag: latest
+patches:
+  - target:
+      kind: Ingress
+      name: hello-api
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: hello.localtest.me
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: hello-api
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 3
+      - op: replace
+        path: /spec/maxReplicas
+        value: 6

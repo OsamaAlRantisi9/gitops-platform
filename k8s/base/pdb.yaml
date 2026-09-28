@@ -1,0 +1,10 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: hello-api
+spec:
+  # During voluntary disruptions (node drain, cluster upgrade) keep at least one pod serving.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: hello-api

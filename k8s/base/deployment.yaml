@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-api
+spec:
+  # No "replicas" here on purpose: the HorizontalPodAutoscaler owns the replica count.
+  # If Git also set it, Argo CD and the HPA would keep overwriting each other.
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: hello-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0 # never drop below the current capacity during a rollout
+      maxSurge: 1 # bring up one new pod at a time
+  template:
+    metadata:
+      labels:
+        app: hello-api
+    spec:
+      terminationGracePeriodSeconds: 30 # must be longer than the app's SHUTDOWN_DELAY_MS
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: hello-api
+          # Placeholder; each overlay pins the real tag with Kustomize "images".
+          image: ghcr.io/osamaalrantisi9/hello-api:latest
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: SHUTDOWN_DELAY_MS
+              value: "5000"
+          resources:
+            requests: # what the scheduler reserves; the HPA's CPU % is measured against this
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi # over this the container is OOMKilled
+              # No CPU limit on purpose: CPU limits throttle the app even when the node has spare CPU.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
