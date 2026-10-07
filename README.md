@@ -1,5 +1,7 @@
 # gitops-platform
 
+![gitops-platform: CI/CD for a containerized Node.js service](docs/cover.png)
+
 A small service shipped the way production platforms ship it: **containerized, tested and scanned in CI, and deployed to Kubernetes through GitOps**.
 
 The app is deliberately tiny. The point of this repo is the delivery path around it: health probes, graceful shutdown, zero-downtime rollouts, per-environment config with Kustomize, image scanning, SBOMs, and Git as the only way to change what runs.
